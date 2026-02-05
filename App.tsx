@@ -15,7 +15,6 @@ const App: React.FC = () => {
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [isSyncingGlobal, setIsSyncingGlobal] = useState(false);
   
-  // Impedisce invii multipli contemporanei per lo stesso ID
   const syncingIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -41,20 +40,18 @@ const App: React.FC = () => {
   useEffect(() => localStorage.setItem('prociv_settings', JSON.stringify(settings)), [settings]);
 
   const syncTripToGoogleSheets = async (trip: Trip) => {
-    // Esci se non c'è URL, se è già sincronizzato o se sta già sincronizzando questo ID
     if (!settings.googleScriptUrl || trip.synced || syncingIds.current.has(trip.id)) return;
     
     syncingIds.current.add(trip.id);
     try {
       const vehicle = vehicles.find(v => v.id === trip.vehicleId);
       
-      // Assicuriamoci che i KM siano numeri puri e non stringhe
       const payload = {
         id: trip.id,
         driverName: trip.driverName,
         vehiclePlate: vehicle?.plate || 'N/D',
-        startKm: Number(trip.startKm),
-        endKm: Number(trip.endKm),
+        startKm: Math.round(Number(trip.startKm)),
+        endKm: Math.round(Number(trip.endKm)),
         destination: trip.destination,
         reason: trip.reason,
         refuelingDone: trip.refuelingDone,
@@ -65,17 +62,16 @@ const App: React.FC = () => {
 
       await fetch(settings.googleScriptUrl, {
         method: 'POST',
-        mode: 'no-cors', // Necessario per Google Apps Script
+        mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       
-      // Aggiorna lo stato locale per segnare come inviato
       setTrips(prev => prev.map(t => t.id === trip.id ? { ...t, synced: true } : t));
     } catch (error) {
-      console.error("Sync Error:", error);
+      console.error("Errore sincronizzazione:", error);
     } finally {
-      syncingIds.current.delete(trip.id);
+      setTimeout(() => syncingIds.current.delete(trip.id), 2000);
     }
   };
 
@@ -84,10 +80,8 @@ const App: React.FC = () => {
       const completedTrip = tripData as Trip;
       setTrips(prev => prev.map(t => t.id === completedTrip.id ? completedTrip : t));
       setActiveTrip(null);
-      
-      // Tenta l'invio immediato
       if (settings.googleScriptUrl) {
-        setTimeout(() => syncTripToGoogleSheets(completedTrip), 1000);
+        setTimeout(() => syncTripToGoogleSheets(completedTrip), 800);
       }
     } else {
       const newTrip = tripData as Trip;
@@ -108,11 +102,11 @@ const App: React.FC = () => {
 
   return (
     <Layout 
-      title={currentView === 'DASHBOARD' ? 'ProCiv Log' : currentView.replace('_', ' ')}
+      title={currentView === 'DASHBOARD' ? 'LOGBOOK MEZZI' : currentView.replace('_', ' ')}
       onBack={currentView !== 'DASHBOARD' ? () => setCurrentView('DASHBOARD') : undefined}
       actions={
         currentView === 'DASHBOARD' && (
-            <button onClick={() => setCurrentView('ADMIN')} className="p-2 text-white bg-blue-800 rounded-full">
+            <button onClick={() => setCurrentView('ADMIN')} className="p-2 text-white bg-blue-800 rounded-full shadow-lg">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
                 </svg>
@@ -122,23 +116,23 @@ const App: React.FC = () => {
     >
       {currentView === 'DASHBOARD' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center">
-            <div className="w-16 h-16 rounded-full bg-yellow-400 flex items-center justify-center mb-4 shadow-lg text-white">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 20 20" fill="currentColor">
+          <div className="bg-white rounded-[2.5rem] shadow-xl border border-gray-100 p-8 flex flex-col items-center text-center">
+            <div className="w-20 h-20 rounded-full bg-yellow-400 flex items-center justify-center mb-6 shadow-2xl text-blue-900 border-4 border-white">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                 </svg>
             </div>
             
             {activeTrip ? (
-              <div className="w-full bg-blue-50 rounded-2xl p-5 border border-blue-200 mb-4 text-left">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="px-2 py-0.5 bg-blue-600 text-white text-[10px] font-black rounded uppercase animate-pulse">In Servizio</span>
-                  <span className="text-xs font-bold text-blue-900">{vehicles.find(v => v.id === activeTrip.vehicleId)?.plate}</span>
+              <div className="w-full bg-blue-50 rounded-3xl p-6 border-2 border-blue-200 mb-4 text-left animate-in zoom-in duration-300">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="px-3 py-1 bg-blue-600 text-white text-[10px] font-black rounded-full uppercase animate-pulse tracking-widest">In Corso</span>
+                  <span className="text-sm font-black text-blue-900">{vehicles.find(v => v.id === activeTrip.vehicleId)?.plate}</span>
                 </div>
-                <p className="text-lg font-black text-blue-900 leading-tight mb-4">{activeTrip.destination}</p>
+                <p className="text-xl font-black text-blue-900 leading-tight mb-6">{activeTrip.destination}</p>
                 <button 
                   onClick={() => setCurrentView('END_TRIP')}
-                  className="w-full bg-blue-900 text-white py-4 rounded-xl font-black text-sm shadow-lg"
+                  className="w-full bg-blue-900 text-white py-5 rounded-2xl font-black text-md shadow-xl active:scale-95 transition-all"
                 >
                   REGISTRA RIENTRO
                 </button>
@@ -146,34 +140,37 @@ const App: React.FC = () => {
             ) : (
               <button 
                 onClick={() => setCurrentView('NEW_TRIP')}
-                className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl flex items-center justify-center gap-3"
+                className="w-full bg-blue-600 text-white py-6 rounded-[2rem] font-black text-xl shadow-2xl flex items-center justify-center gap-4 hover:bg-blue-700 active:scale-95 transition-all"
               >
-                AVVIA USCITA
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                </svg>
+                NUOVA USCITA
               </button>
             )}
 
             {settings.googleScriptUrl && trips.some(t => t.status === TripStatus.COMPLETED && !t.synced) && (
               <button 
                 onClick={bulkSync}
-                className="mt-4 text-[10px] font-black text-green-600 bg-green-50 px-4 py-2 rounded-full border border-green-200"
+                className="mt-6 text-[10px] font-black text-green-700 bg-green-100 px-6 py-3 rounded-full border-2 border-green-200 uppercase tracking-tighter"
                 disabled={isSyncingGlobal}
               >
-                {isSyncingGlobal ? 'SINCRONIZZAZIONE...' : '⚠️ INVIA DATI PENDENTI'}
+                {isSyncingGlobal ? 'INVIO IN CORSO...' : '⚠️ INVIA DATI AL FOGLIO'}
               </button>
             )}
           </div>
 
           <div className="space-y-3">
-            <h3 className="font-black text-gray-400 uppercase text-[10px] tracking-widest px-2">Ultime Missioni</h3>
+            <h3 className="font-black text-gray-400 uppercase text-[10px] tracking-[0.2em] px-4">Recenti</h3>
             {trips.filter(t => t.status === TripStatus.COMPLETED).slice(0, 5).map(trip => (
-              <div key={trip.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
+              <div key={trip.id} className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex items-center justify-between">
                 <div>
                   <p className="font-black text-gray-800 text-sm">{vehicles.find(v => v.id === trip.vehicleId)?.plate}</p>
-                  <p className="text-[9px] text-gray-400 font-bold uppercase">{trip.destination}</p>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase truncate max-w-[150px]">{trip.destination}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                   {trip.synced && <div className="w-2 h-2 bg-green-500 rounded-full"></div>}
-                   <p className="text-sm font-black text-blue-900">{(trip.endKm || 0) - trip.startKm} KM</p>
+                <div className="flex items-center gap-4">
+                   {trip.synced && <div className="w-3 h-3 bg-green-500 rounded-full shadow-sm"></div>}
+                   <p className="text-md font-black text-blue-900">{(trip.endKm || 0) - trip.startKm} KM</p>
                 </div>
               </div>
             ))}
@@ -185,38 +182,41 @@ const App: React.FC = () => {
       {currentView === 'END_TRIP' && activeTrip && <TripForm onSave={handleSaveTrip} activeTrip={activeTrip} vehicles={vehicles} volunteers={volunteers} />}
       
       {currentView === 'ADMIN' && (
-        <div className="space-y-6">
-          <div className="bg-green-50 p-6 rounded-3xl border border-green-200">
-             <h3 className="text-sm font-black text-green-900 uppercase mb-2 tracking-widest">Configurazione Foglio</h3>
+        <div className="space-y-6 animate-in slide-in-from-right duration-300">
+          <div className="bg-green-50 p-6 rounded-[2rem] border-2 border-green-100">
+             <h3 className="text-xs font-black text-green-900 uppercase mb-4 tracking-widest">Configurazione Cloud</h3>
+             <label className="text-[10px] font-black text-green-700 uppercase">URL Google Sheets Script</label>
              <input 
-                className="w-full p-3 text-xs rounded-xl border border-green-300 outline-none"
-                placeholder="URL Web App Google Script"
+                className="w-full p-4 mt-1 text-xs rounded-2xl border-2 border-green-200 outline-none focus:border-green-500 transition-all font-mono"
+                placeholder="https://script.google.com/..."
                 value={settings.googleScriptUrl}
                 onChange={(e) => setSettings({...settings, googleScriptUrl: e.target.value})}
              />
-             <p className="mt-2 text-[9px] text-green-600 italic">I dati verranno aggiunti al foglio a ogni rientro.</p>
+             <p className="mt-3 text-[9px] text-green-600 font-bold uppercase leading-tight">I dati verranno inviati automaticamente al foglio Google a ogni chiusura turno.</p>
           </div>
 
-          <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-             <h3 className="text-sm font-black text-gray-800 uppercase mb-4 tracking-widest">Anagrafica Mezzi</h3>
-             <div className="space-y-2 mb-4">
+          <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-lg">
+             <h3 className="text-xs font-black text-gray-800 uppercase mb-4 tracking-widest">Mezzi Protezione Civile</h3>
+             <div className="space-y-2 mb-6">
                 {vehicles.map(v => (
-                  <div key={v.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
-                    <p className="font-bold text-gray-800 text-sm">{v.plate} - {v.model}</p>
-                    <button onClick={() => setVehicles(vehicles.filter(item => item.id !== v.id))} className="text-red-400">
-                      Elimina
+                  <div key={v.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl">
+                    <p className="font-black text-gray-800 text-sm">{v.plate} <span className="text-gray-400 font-bold ml-2">{v.model}</span></p>
+                    <button onClick={() => setVehicles(vehicles.filter(item => item.id !== v.id))} className="text-red-500 p-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
                     </button>
                   </div>
                 ))}
              </div>
              <form onSubmit={(e: any) => {
                  e.preventDefault();
-                 setVehicles([...vehicles, { id: Date.now().toString(), plate: e.target.plate.value, model: e.target.model.value }]);
+                 setVehicles([...vehicles, { id: Date.now().toString(), plate: e.target.plate.value.toUpperCase(), model: e.target.model.value }]);
                  e.target.reset();
-             }} className="flex gap-2">
-                <input name="plate" placeholder="Targa" className="flex-1 text-xs p-3 rounded-xl border border-gray-200" required />
-                <input name="model" placeholder="Modello" className="flex-1 text-xs p-3 rounded-xl border border-gray-200" required />
-                <button className="bg-blue-600 text-white px-4 rounded-xl shadow-lg">+</button>
+             }} className="space-y-2">
+                <input name="plate" placeholder="Targa" className="w-full text-xs p-4 rounded-xl border border-gray-200 font-bold" required />
+                <input name="model" placeholder="Modello (es. Defender, Ducato)" className="w-full text-xs p-4 rounded-xl border border-gray-200" required />
+                <button className="w-full bg-blue-600 text-white p-4 rounded-xl font-black shadow-md">+ AGGIUNGI MEZZO</button>
              </form>
           </div>
         </div>
